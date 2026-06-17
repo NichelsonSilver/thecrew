@@ -1,0 +1,28 @@
+# Credenciales
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.uv/
+uv.lock
+
+# CrewAI / outputs generados
+output/
+*.log
+db/
+memory/
+crew_memory/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

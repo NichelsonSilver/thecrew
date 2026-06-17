@@ -1,0 +1,164 @@
+# Definición de tareas. El orden importa: en proceso secuencial cada tarea
+# recibe como contexto el output de las tareas listadas en `context`.
+#
+# PROTOCOLO DE VERIFICACIÓN (rige las tres tareas de research) ----------------
+# Una noticia se VERIFICA abriéndola con la herramienta de scraping y confirmando
+# que la URL existe, el medio es real y la fecha es real. Toda noticia se
+# clasifica en UNO de tres ESTADOS, y la distinción es obligatoria:
+#
+#   • EN VENTANA      — verificada Y su fecha cae dentro de {periodo}. Candidata
+#                       principal a publicar.
+#   • FUERA DE VENTANA— verificada (URL abre, medio y fecha reales) PERO su fecha
+#                       es anterior a {periodo}. NO se descarta: se conserva como
+#                       contexto / respaldo, etiquetada como tal. Una noticia real
+#                       pero vieja es contexto, NO es basura.
+#   • NO VERIFICABLE  — la URL no abre / da 404, o no se puede confirmar medio o
+#                       fecha. Se descarta de la publicación.
+#
+# Reglas de oro:
+#   1. PROHIBIDO fabricar o suponer URLs, medios, cifras, fechas o citas.
+#   2. "No pude verificarla" NO es lo mismo que "es falsa". Solo se afirma
+#      FABRICACIÓN si hay evidencia positiva (URL inventada, medio inexistente).
+#      Ante una sola fuente débil sin corroborar: márcala NO VERIFICABLE y omítela
+#      — no la denuncies como invento ni la publiques.
+#   3. Preferir fuentes primarias/oficiales y de alta autoridad. Varias fuentes
+#      de baja autoridad citándose entre sí NO equivalen a verificación.
+#   4. Si NINGUNA noticia queda EN VENTANA, entregar "SIN NOTICIA EN VENTANA" y,
+#      si existe, la mejor FUERA DE VENTANA como contexto. Nunca rellenar con algo
+#      NO VERIFICABLE.
+
+research_ia:
+  description: >
+    Busca en la web las noticias de {periodo} sobre {topic_ia}. Compara al menos
+    3-4 fuentes y selecciona la NOTICIA MÁS IMPORTANTE {alcance} en este tópico.
+    Aplica el PROTOCOLO DE VERIFICACIÓN: abre cada fuente con scraping y clasifica
+    en EN VENTANA / FUERA DE VENTANA / NO VERIFICABLE. Prioriza la mejor EN
+    VENTANA; si no hay ninguna, entrega la mejor FUERA DE VENTANA como contexto.
+    No inventes nada y no denuncies como falsa una nota que solo no pudiste
+    corroborar.
+  expected_output: >
+    Una nota en este formato:
+    - Titular
+    - Fuente (medio + URL) + fecha
+    - Estado: EN VENTANA | FUERA DE VENTANA | NO VERIFICABLE
+    - Verificación: ABIERTA OK (confirmas que la URL abre y la fecha es real)
+    - Resumen (3-4 frases, solo con datos presentes en la fuente)
+    - Por qué es la más importante {alcance} (1-2 frases)
+    Si no hay ninguna EN VENTANA: "SIN NOTICIA EN VENTANA" + la mejor FUERA DE
+    VENTANA (si existe), etiquetada como contexto.
+  agent: scout_ia
+
+research_cripto:
+  description: >
+    Busca en la web las noticias de {periodo} sobre {topic_cripto}. Compara
+    fuentes, verifica montos y fechas. Aplica el PROTOCOLO DE VERIFICACIÓN: abre
+    cada fuente y clasifica en EN VENTANA / FUERA DE VENTANA / NO VERIFICABLE.
+    Selecciona la mejor EN VENTANA; si no hay, entrega la mejor FUERA DE VENTANA
+    como contexto. No inventes montos ni fechas; no denuncies como falsa una nota
+    que solo no pudiste corroborar.
+  expected_output: >
+    Una nota con: Titular / Fuente (medio + URL) + fecha /
+    Estado: EN VENTANA | FUERA DE VENTANA | NO VERIFICABLE /
+    Verificación: ABIERTA OK / Resumen (3-4 frases) / Por qué es la más
+    importante {alcance}.
+    Si no hay ninguna EN VENTANA: "SIN NOTICIA EN VENTANA" + la mejor FUERA DE
+    VENTANA (si existe), etiquetada como contexto.
+  agent: scout_cripto
+
+research_economia:
+  description: >
+    Busca en la web las noticias de {periodo} sobre {topic_economia}. Prioriza
+    impacto macro y fuentes primarias/oficiales (bancos centrales, organismos).
+    Aplica el PROTOCOLO DE VERIFICACIÓN: abre cada fuente y clasifica en EN
+    VENTANA / FUERA DE VENTANA / NO VERIFICABLE. Selecciona la mejor EN VENTANA;
+    si no hay, entrega la mejor FUERA DE VENTANA como contexto. No inventes cifras;
+    no denuncies como falsa una nota que solo no pudiste corroborar.
+  expected_output: >
+    Una nota con: Titular / Fuente (medio + URL) + fecha /
+    Estado: EN VENTANA | FUERA DE VENTANA | NO VERIFICABLE /
+    Verificación: ABIERTA OK / Resumen (3-4 frases) / Por qué es la más
+    importante {alcance}.
+    Si no hay ninguna EN VENTANA: "SIN NOTICIA EN VENTANA" + la mejor FUERA DE
+    VENTANA (si existe), etiquetada como contexto.
+  agent: scout_economia
+
+curaduria_editorial:
+  description: >
+    Recibe las tres notas candidatas y resuélvelas según su Estado:
+    - EN VENTANA: candidata válida; confírmala o corrígela.
+    - FUERA DE VENTANA: NO la trates como noticia del período ni la descartes como
+      basura. Inclúyela como "contexto (fuera de ventana)" si es relevante, o
+      declara el tópico "sin novedad en ventana" señalando ese contexto.
+    - NO VERIFICABLE: descártala. Solo si hay evidencia positiva de invención la
+      calificas de fabricación; si simplemente no se pudo corroborar, dilo así.
+    ORDENA las EN VENTANA por relevancia global {alcance}. Justifica cada
+    decisión en una frase.
+  expected_output: >
+    Selección final que para cada tópico indica su Estado resultante: la noticia
+    EN VENTANA elegida (con fuente y justificación), o "sin novedad en ventana"
+    con el contexto FUERA DE VENTANA relevante, o vacante si todo era NO
+    VERIFICABLE. Las EN VENTANA, ordenadas por relevancia.
+  agent: editor_jefe
+  context:
+    - research_ia
+    - research_cripto
+    - research_economia
+
+analisis_implicancias:
+  description: >
+    Para cada una de las 3 noticias seleccionadas, escribe un análisis objetivo:
+    causas, efectos de segundo orden, quién gana/pierde, y qué señales vigilar.
+    No repitas el titular; interprétalo. Marca explícitamente cualquier
+    afirmación que no puedas respaldar con la fuente.
+  expected_output: >
+    Tres bloques de análisis (uno por noticia), cada uno de 4-6 frases, técnico
+    y objetivo, sin opinión de marca.
+  agent: analista
+  context:
+    - curaduria_editorial
+
+opinion_ai_first:
+  description: >
+    Para cada noticia, emite la opinión de REALI como empresa AI-first usando la
+    lente de knowledge/. Responde: ¿oportunidad o amenaza para un negocio que
+    opera con IA y datos?, ¿qué automatizar/vigilar/ignorar? Honestidad radical:
+    si algo es irrelevante para una empresa AI-first, dilo.
+  expected_output: >
+    Tres opiniones (una por noticia), cada una accionable, objetiva y con una
+    conclusión clara sobre la implicancia para una empresa AI-first.
+  agent: estratega_reali
+  context:
+    - analisis_implicancias
+
+redaccion_web:
+  description: >
+    Integra selección + análisis + opinión AI-first en UN artículo en Markdown
+    para la web. Estructura: titular, bajada (2 frases), una sección por noticia
+    (### Qué pasó / Por qué importa / Lente AI-first), y un cierre. Cita fuentes
+    con enlaces. Respeta las reglas editoriales de knowledge/ y los Estados de la
+    curaduría: lo marcado FUERA DE VENTANA se presenta explícitamente como
+    contexto (no como noticia del período) y los tópicos vacantes se declaran.
+  expected_output: >
+    Artículo completo en Markdown válido, listo para publicar, con fuentes
+    enlazadas.
+  agent: redactor_web
+  context:
+    - curaduria_editorial
+    - analisis_implicancias
+    - opinion_ai_first
+  output_file: output/articulo_web.md
+
+adaptacion_redes:
+  description: >
+    A partir del artículo web, crea las adaptaciones para RRSS:
+    (1) LinkedIn: post profesional con gancho + 3 ideas clave + CTA.
+    (2) X/Twitter: hilo de 4-6 tuits numerados.
+    (3) Instagram: texto de carrusel (3-5 slides) + caption con hashtags.
+    Mantén la voz de REALI y la objetividad. Nada de clickbait engañoso.
+  expected_output: >
+    Documento Markdown con tres secciones (## LinkedIn, ## X/Twitter,
+    ## Instagram), cada una lista para copiar y publicar.
+  agent: community_manager
+  context:
+    - redaccion_web
+  output_file: output/redes_sociales.md

@@ -1,0 +1,28 @@
+[project]
+name = "thecrew"
+version = "0.1.0"
+description = "Equipo de agentes CrewAI: noticia del día (IA/cripto/economía), análisis y opinión AI-first, hasta publicación."
+authors = [{ name = "Nichelson Churata", email = "nichelson@realidata.cl" }]
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "crewai[anthropic,google-genai,tools]>=0.130.0",
+]
+
+[project.scripts]
+thecrew = "thecrew.main:run"
+run_crew = "thecrew.main:run"
+run_dia = "thecrew.main:run_dia"
+run_semana = "thecrew.main:run_semana"
+train = "thecrew.main:train"
+replay = "thecrew.main:replay"
+test = "thecrew.main:test"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/thecrew"]
+
+[tool.crewai]
+type = "crew"
