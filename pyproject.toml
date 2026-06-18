@@ -6,6 +6,7 @@ authors = [{ name = "Nichelson Churata", email = "nichelson@realidata.cl" }]
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "crewai[anthropic,google-genai,tools]>=0.130.0",
+    "httpx>=0.27",
 ]
 
 [project.scripts]
@@ -13,6 +14,7 @@ thecrew = "thecrew.main:run"
 run_crew = "thecrew.main:run"
 run_dia = "thecrew.main:run_dia"
 run_semana = "thecrew.main:run_semana"
+publicar_linkedin = "thecrew.publish_linkedin:main"
 train = "thecrew.main:train"
 replay = "thecrew.main:replay"
 test = "thecrew.main:test"

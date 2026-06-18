@@ -12,7 +12,8 @@ dist/
 .venv/
 venv/
 .uv/
-uv.lock
+# uv.lock SÍ se versiona: fija dependencias exactas -> corridas reproducibles
+# y permite el cache de setup-uv en CI. (no lo ignores)
 
 # CrewAI / outputs generados
 output/

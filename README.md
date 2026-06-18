@@ -97,13 +97,55 @@ uv sync           # o: pip install -e .
 cp .env.example .env
 #   edita .env y completa ANTHROPIC_API_KEY y SERPER_API_KEY
 
-# 3. Ejecutar el crew (usa la fecha de hoy automáticamente)
-crewai run        # o: uv run thecrew
+# 3. Ejecutar el crew — trigger EXPLÍCITO, sin default silencioso
+uv run run_dia      # noticia más importante de las últimas 24 horas (on-demand)
+uv run run_semana   # noticia más importante de los últimos 7 días (corrida semanal)
 ```
 
 Los entregables quedan en `output/`:
 - `output/articulo_web.md` — artículo para la página web.
 - `output/redes_sociales.md` — posts para LinkedIn, X e Instagram.
+
+---
+
+## Automatización (GitHub Actions)
+
+`.github/workflows/semanal.yml` corre `run_semana` cada **lunes 13:00 UTC**
+(≈ 09:00 Chile) y por disparo manual (`workflow_dispatch`). Sube `output/` como
+artifact. Requiere cargar dos secrets en el repo:
+
+```bash
+gh secret set ANTHROPIC_API_KEY --repo <owner>/thecrew
+gh secret set SERPER_API_KEY    --repo <owner>/thecrew
+```
+
+El cron **genera** el entregable; **no publica solo**. La publicación es un paso
+explícito y revisado (ver abajo).
+
+---
+
+## Publicación en LinkedIn
+
+`uv run publicar_linkedin` toma el bloque `## LinkedIn` de
+`output/redes_sociales.md` y lo publica en tu perfil vía la Posts API.
+
+```bash
+uv run publicar_linkedin              # PREVIEW (no publica) — default seguro
+uv run publicar_linkedin --publicar   # publica de verdad
+```
+
+Por diseño hace **preview por defecto** (publicar es irreversible) y **no está
+cableado al cron**: revisas y publicas a mano.
+
+**Obtener el token (una vez):**
+1. Crea una app en [LinkedIn Developers](https://www.linkedin.com/developers/apps)
+   y asóciala a una página de empresa.
+2. Agrega los productos **"Share on LinkedIn"** y **"Sign In with LinkedIn using
+   OpenID Connect"** para habilitar los scopes `w_member_social` y `openid`/`profile`.
+3. Completa el flujo OAuth 2.0 (Authorization Code) y obtén un access token de
+   miembro. Los tokens de miembro caducan (~60 días); guarda el refresh token.
+4. En `.env`: `LINKEDIN_ACCESS_TOKEN=...`. Opcional `LINKEDIN_AUTHOR_URN=` (si lo
+   dejas vacío se resuelve solo vía `/v2/userinfo`).
 
 ---
 
@@ -125,5 +167,7 @@ Scaffold funcional. Definición de "done" del scaffold:
 - [x] Integración Claude vía LiteLLM, dos LLMs configurables.
 - [x] Tools de búsqueda + stubs de publicación + patrón MCP.
 - [x] Knowledge base con la lente AI-first de REALI.
-- [ ] Conectar credenciales reales y primera corrida de validación.
-- [ ] Cablear publicación real (CMS / RRSS / MCP) cuando se valide el output.
+- [x] Credenciales reales conectadas y corridas de validación (dia + semana).
+- [x] Automatización semanal vía GitHub Actions (cron + artifact).
+- [x] Publicación en LinkedIn (`publicar_linkedin`, preview-by-default).
+- [ ] Otros canales (web / X / Instagram) cuando se decida.
