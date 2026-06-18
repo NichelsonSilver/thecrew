@@ -19,6 +19,7 @@ Requiere en .env:
   LINKEDIN_API_VERSION    versión de la API, formato YYYYMM (opcional)
 """
 
+import mimetypes
 import os
 import sys
 from datetime import date
@@ -54,6 +55,15 @@ def _imagen_del_dia(override: str | None) -> Path | None:
             if p.suffix.lower() in IMG_EXTS:
                 return p
     return None
+
+
+def _alt_por_defecto(texto: str) -> str:
+    """Texto alternativo accesible: primera línea no vacía del post, sin markdown."""
+    for linea in texto.splitlines():
+        s = linea.strip().lstrip("#").replace("*", "").strip()
+        if s:
+            return s[:280]
+    return "Imagen del análisis de REALI."
 
 
 def _versiones_api() -> list[str]:
@@ -186,10 +196,11 @@ def _subir_imagen(client: httpx.Client, token: str, owner: str, ruta: Path) -> s
             f"{init.text[:300]}"
         )
     value = init.json()["value"]
+    mime = mimetypes.guess_type(ruta.name)[0] or "application/octet-stream"
     up = client.put(
         value["uploadUrl"],
         content=ruta.read_bytes(),
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "Content-Type": mime},
     )
     if up.status_code not in (200, 201):
         raise RuntimeError(
@@ -204,12 +215,14 @@ def publicar_en_linkedin(
     dry_run: bool = True,
     como_empresa: bool = False,
     imagen: Path | None = None,
+    alt: str = "",
 ) -> str:
     """Publica `texto` en LinkedIn. En dry_run no llama a la API.
 
     como_empresa=True publica como página de organización (author = urn:li:
     organization:…); requiere el scope w_organization_social en el token.
     imagen: ruta a una imagen para adjuntar (mejor enganche); opcional.
+    alt: texto alternativo accesible (si vacío, se deriva de la 1ª línea del post).
     """
     if not texto:
         raise ValueError("El texto del post está vacío.")
@@ -249,7 +262,9 @@ def publicar_en_linkedin(
         payload["author"] = _org_urn(client, token) if como_empresa else _author_urn(client, token)
         if imagen is not None:
             image_urn = _subir_imagen(client, token, payload["author"], imagen)
-            payload["content"] = {"media": {"id": image_urn}}
+            payload["content"] = {
+                "media": {"id": image_urn, "altText": alt or _alt_por_defecto(texto)}
+            }
         ultima = None
         for version in _versiones_api():
             r = client.post(
@@ -290,6 +305,7 @@ def main() -> None:
     if "--archivo" in args:
         archivo = Path(args[args.index("--archivo") + 1])
     imagen_arg = args[args.index("--imagen") + 1] if "--imagen" in args else None
+    alt = args[args.index("--alt") + 1] if "--alt" in args else ""
 
     if not archivo.exists():
         sys.exit(
@@ -307,7 +323,7 @@ def main() -> None:
     print(f"({len(texto)} caracteres · destino: {destino} · imagen: {img_txt})\n")
 
     resultado = publicar_en_linkedin(
-        texto, dry_run=not publicar, como_empresa=empresa, imagen=imagen
+        texto, dry_run=not publicar, como_empresa=empresa, imagen=imagen, alt=alt
     )
     print(resultado)
 

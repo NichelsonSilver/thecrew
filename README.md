@@ -139,8 +139,12 @@ cableado al cron**: revisas y publicas a mano.
 
 **Imagen (mejor enganche):** deja una imagen en `imagenes/` nombrada con la
 fecha de hoy — `imagenes/AAAA-MM-DD.png` (o `.jpg`). El script la detecta y la
-adjunta. Override: `--imagen ruta/foto.png`. El preview indica si encontró
-imagen; si no, publica solo texto. Flujo recomendado antes de publicar:
+adjunta con texto alternativo accesible (deriva de la 1ª línea del post;
+override con `--alt "..."`). Override de imagen: `--imagen ruta/foto.png`. El
+pipeline además sugiere **qué imagen crear**: la tarea `adaptacion_redes` emite
+una sección `## Imagen sugerida (post LinkedIn)` con un brief visual + alt en
+`output/redes_sociales.md`. El preview indica si encontró imagen; si no,
+publica solo texto. Flujo recomendado antes de publicar:
 
 ```bash
 uv run run_dia                        # 1) genera el post
