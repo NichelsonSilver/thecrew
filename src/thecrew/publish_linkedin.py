@@ -105,8 +105,8 @@ def extraer_seccion_linkedin(md_path: Path) -> str:
         s = l.strip()
         if s.startswith("## ") or s == "---":
             break
-        if s.startswith("→") and "comentario" in s.lower():
-            continue  # nota de logística, no va en el post
+        if "primer comentario" in s.lower():
+            continue  # nota de logística de publicación, no va en el post
         cuerpo.append(l)
     return "\n".join(cuerpo).strip()
 

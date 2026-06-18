@@ -174,8 +174,12 @@ redaccion_web:
 adaptacion_redes:
   description: >
     A partir del artículo web, crea las adaptaciones para RRSS:
-    (1) LinkedIn: post profesional con gancho + 3 ideas clave + CTA.
-    (2) X/Twitter: hilo de 4-6 tuits numerados.
+    (1) LinkedIn: post profesional con gancho + 3 ideas clave + CTA. Formato
+    NATIVO de LinkedIn: NADA de Markdown (sin **, *, _, #, ni backticks — se ven
+    como caracteres literales). Estructura con saltos de línea entre bloques
+    cortos y emojis sobrios como ancla de cada idea (3-6 en total, uno por
+    bloque máx.; ej. 🤖 📉 🪙 ⚠️ 💡 👉). Ideas clave con 1️⃣ 2️⃣ 3️⃣ o viñeta •.
+    (2) X/Twitter: hilo de 4-6 tuits numerados. Sin Markdown; emojis con mesura.
     (3) Instagram: texto de carrusel (3-5 slides) + caption con hashtags.
     (4) Imagen sugerida para el post de LinkedIn: un brief visual concreto para
     crear una imagen de enganche (concepto, estilo, elementos, paleta sobria y
