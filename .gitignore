@@ -17,6 +17,7 @@ venv/
 
 # CrewAI / outputs generados
 output/
+imagenes/
 *.log
 db/
 memory/
