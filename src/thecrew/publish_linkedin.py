@@ -21,6 +21,7 @@ Requiere en .env:
 
 import os
 import sys
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -28,8 +29,26 @@ from dotenv import load_dotenv
 
 API_POSTS = "https://api.linkedin.com/rest/posts"
 API_USERINFO = "https://api.linkedin.com/v2/userinfo"
-DEFAULT_VERSION = "202405"
 MAX_COMMENTARY = 3000  # límite de LinkedIn para el cuerpo del post
+
+
+def _versiones_api() -> list[str]:
+    """Versiones LinkedIn-Version a probar (YYYYMM), de más nueva a más vieja.
+
+    LinkedIn rota las versiones y desactiva las de >~12 meses (HTTP 426). En vez
+    de hardcodear una fecha que expira, calculamos el mes actual y caemos hacia
+    atrás. Override explícito con LINKEDIN_API_VERSION.
+    """
+    env = os.getenv("LINKEDIN_API_VERSION", "").strip()
+    if env:
+        return [env]
+    cands, y, m = [], date.today().year, date.today().month
+    for _ in range(4):  # mes actual + 3 anteriores
+        cands.append(f"{y}{m:02d}")
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    return cands
 
 
 def extraer_seccion_linkedin(md_path: Path) -> str:
@@ -96,38 +115,44 @@ def publicar_en_linkedin(texto: str, *, dry_run: bool = True) -> str:
     token = os.getenv("LINKEDIN_ACCESS_TOKEN", "").strip()
     if not token:
         raise RuntimeError("Falta LINKEDIN_ACCESS_TOKEN en el entorno (.env).")
-    version = os.getenv("LINKEDIN_API_VERSION", DEFAULT_VERSION).strip()
+
+    payload = {
+        "author": None,  # se completa con el autor resuelto
+        "commentary": texto,
+        "visibility": "PUBLIC",
+        "distribution": {
+            "feedDistribution": "MAIN_FEED",
+            "targetEntities": [],
+            "thirdPartyDistributionChannels": [],
+        },
+        "lifecycleState": "PUBLISHED",
+        "isReshareDisabledByAuthor": False,
+    }
 
     with httpx.Client(timeout=30) as client:
-        author = _author_urn(client, token)
-        payload = {
-            "author": author,
-            "commentary": texto,
-            "visibility": "PUBLIC",
-            "distribution": {
-                "feedDistribution": "MAIN_FEED",
-                "targetEntities": [],
-                "thirdPartyDistributionChannels": [],
-            },
-            "lifecycleState": "PUBLISHED",
-            "isReshareDisabledByAuthor": False,
-        }
-        r = client.post(
-            API_POSTS,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-                "X-Restli-Protocol-Version": "2.0.0",
-                "LinkedIn-Version": version,
-            },
-            json=payload,
-        )
-    if r.status_code not in (200, 201):
-        raise RuntimeError(
-            f"LinkedIn rechazó la publicación (HTTP {r.status_code}): {r.text[:500]}"
-        )
-    post_id = r.headers.get("x-restli-id") or r.headers.get("x-linkedin-id") or "?"
-    return f"Publicado en LinkedIn. ID: {post_id}"
+        payload["author"] = _author_urn(client, token)
+        ultima = None
+        for version in _versiones_api():
+            r = client.post(
+                API_POSTS,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "X-Restli-Protocol-Version": "2.0.0",
+                    "LinkedIn-Version": version,
+                },
+                json=payload,
+            )
+            if r.status_code in (200, 201):
+                post_id = r.headers.get("x-restli-id") or r.headers.get("x-linkedin-id") or "?"
+                return f"Publicado en LinkedIn (v{version}). ID: {post_id}"
+            ultima = r
+            if r.status_code != 426:  # 426 = versión inactiva (no crea post); otro error: corta
+                break
+
+    raise RuntimeError(
+        f"LinkedIn rechazó la publicación (HTTP {ultima.status_code}): {ultima.text[:500]}"
+    )
 
 
 def main() -> None:
