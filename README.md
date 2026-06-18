@@ -142,10 +142,18 @@ cableado al cron**: revisas y publicas a mano.
    y asóciala a una página de empresa.
 2. Agrega los productos **"Share on LinkedIn"** y **"Sign In with LinkedIn using
    OpenID Connect"** para habilitar los scopes `w_member_social` y `openid`/`profile`.
-3. Completa el flujo OAuth 2.0 (Authorization Code) y obtén un access token de
-   miembro. Los tokens de miembro caducan (~60 días); guarda el refresh token.
-4. En `.env`: `LINKEDIN_ACCESS_TOKEN=...`. Opcional `LINKEDIN_AUTHOR_URN=` (si lo
-   dejas vacío se resuelve solo vía `/v2/userinfo`).
+3. En **Auth → Authorized redirect URLs** agrega exactamente:
+   `http://localhost:8765/callback`.
+4. En `.env`: `LINKEDIN_CLIENT_ID` y `LINKEDIN_CLIENT_SECRET` (pestaña Auth).
+5. Corre el helper — abre el navegador, autorizas, y escribe el token en `.env`:
+   ```bash
+   uv run linkedin_token
+   ```
+   Tener Client ID/Secret NO basta: el token de publicación exige tu
+   autorización como miembro (OAuth 3-legged). Eso es lo que hace este paso.
+   Los tokens de miembro caducan (~60 días); el refresh token se guarda si la
+   app lo habilita. `LINKEDIN_AUTHOR_URN` es opcional (se resuelve vía
+   `/v2/userinfo`).
 
 ---
 

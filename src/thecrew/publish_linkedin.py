@@ -131,10 +131,11 @@ def publicar_en_linkedin(texto: str, *, dry_run: bool = True) -> str:
 
 def main() -> None:
     # Windows usa cp1252 por defecto; el post lleva acentos y símbolos.
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-    except (AttributeError, ValueError):
-        pass
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
     args = sys.argv[1:]
     publicar = "--publicar" in args
     archivo = Path("output/redes_sociales.md")
