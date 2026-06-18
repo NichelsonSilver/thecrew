@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
 
 API_POSTS = "https://api.linkedin.com/rest/posts"
 API_USERINFO = "https://api.linkedin.com/v2/userinfo"
@@ -136,6 +137,8 @@ def main() -> None:
             stream.reconfigure(encoding="utf-8")
         except (AttributeError, ValueError):
             pass
+
+    load_dotenv()  # uv run no inyecta .env; este script no pasa por CrewAI
     args = sys.argv[1:]
     publicar = "--publicar" in args
     archivo = Path("output/redes_sociales.md")

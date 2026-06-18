@@ -28,6 +28,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
 
 PORT = 8765
 REDIRECT_URI = f"http://localhost:{PORT}/callback"
@@ -82,6 +83,8 @@ def main() -> None:
             stream.reconfigure(encoding="utf-8")
         except (AttributeError, ValueError):
             pass
+
+    load_dotenv()  # uv run no inyecta .env; este script no pasa por CrewAI
 
     client_id = os.getenv("LINKEDIN_CLIENT_ID", "").strip()
     client_secret = os.getenv("LINKEDIN_CLIENT_SECRET", "").strip()
