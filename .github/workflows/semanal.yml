@@ -1,0 +1,49 @@
+name: THECREW — run semanal
+
+# Disparadores: cron semanal + manual (workflow_dispatch).
+# Lunes 13:00 UTC ≈ 09:00 Chile. Ajusta el cron si cambia la zona/horario.
+on:
+  schedule:
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+
+# Evita corridas solapadas si una tarda más de lo previsto.
+concurrency:
+  group: thecrew-semanal
+  cancel-in-progress: false
+
+jobs:
+  run-semana:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: "1"
+      # Todo el pipeline sobre Anthropic (único proveedor con crédito).
+      RESEARCH_MODEL: anthropic/claude-sonnet-4-6
+      ANALYSIS_MODEL: anthropic/claude-sonnet-4-6
+      WRITING_MODEL: anthropic/claude-sonnet-4-6
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Python 3.13 (CrewAI no soporta 3.14)
+        run: uv python install 3.13
+
+      - name: Sincronizar dependencias
+        run: uv sync
+
+      - name: Correr pipeline semanal
+        run: uv run run_semana
+
+      - name: Subir entregables
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: thecrew-semanal-${{ github.run_id }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 30

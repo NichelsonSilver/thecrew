@@ -26,6 +26,24 @@
 #   4. Si NINGUNA noticia queda EN VENTANA, entregar "SIN NOTICIA EN VENTANA" y,
 #      si existe, la mejor FUERA DE VENTANA como contexto. Nunca rellenar con algo
 #      NO VERIFICABLE.
+#
+# AUTORIDAD DE FUENTES (obligatorio clasificar cada fuente en un TIER) ---------
+#   • TIER 1 — primaria/oficial: el actor o el organismo mismo. Comunicados y
+#     blogs oficiales (anthropic.com, openai.com, Reserva Federal, BCE, SEC,
+#     bancos centrales, registros regulatorios, papers, filings). Máxima confianza.
+#   • TIER 2 — prensa profesional con estándar editorial y autoría identificable:
+#     Reuters, Bloomberg, AP, FT, WSJ, CNBC, The Economist; en cripto, CoinDesk y
+#     The Block. Confiables, pero secundarias.
+#   • TIER 3 — agregadores, blogs sectoriales, medios menores, contenido sin
+#     autor claro. Solo como pista para ir a buscar TIER 1/2; NUNCA como prueba.
+#   • TIER 0 — redes sociales, foros, posts anónimos, IA-generados sin fuente.
+#     No son evidencia de nada.
+#
+# UMBRAL PARA "EN VENTANA": una noticia solo se marca EN VENTANA si está
+# respaldada por (a) al menos UNA fuente TIER 1, o (b) DOS fuentes TIER 2
+# INDEPENDIENTES (no una citando a la otra). Una sola TIER 2 sin corroborar o
+# cualquier cosa TIER 3/0 => NO VERIFICABLE. Toda fuente reportada debe declarar
+# su TIER. Ante conflicto entre tiers, manda la de mayor autoridad.
 
 research_ia:
   description: >
@@ -39,9 +57,10 @@ research_ia:
   expected_output: >
     Una nota en este formato:
     - Titular
-    - Fuente (medio + URL) + fecha
+    - Fuente(s) (medio + URL + TIER 1|2|3|0) + fecha
     - Estado: EN VENTANA | FUERA DE VENTANA | NO VERIFICABLE
-    - Verificación: ABIERTA OK (confirmas que la URL abre y la fecha es real)
+    - Verificación: ABIERTA OK (confirmas que la URL abre y la fecha es real) +
+      cómo se cumple el umbral (1 fuente TIER 1, o 2 TIER 2 independientes)
     - Resumen (3-4 frases, solo con datos presentes en la fuente)
     - Por qué es la más importante {alcance} (1-2 frases)
     Si no hay ninguna EN VENTANA: "SIN NOTICIA EN VENTANA" + la mejor FUERA DE
@@ -57,10 +76,11 @@ research_cripto:
     como contexto. No inventes montos ni fechas; no denuncies como falsa una nota
     que solo no pudiste corroborar.
   expected_output: >
-    Una nota con: Titular / Fuente (medio + URL) + fecha /
+    Una nota con: Titular / Fuente(s) (medio + URL + TIER 1|2|3|0) + fecha /
     Estado: EN VENTANA | FUERA DE VENTANA | NO VERIFICABLE /
-    Verificación: ABIERTA OK / Resumen (3-4 frases) / Por qué es la más
-    importante {alcance}.
+    Verificación: ABIERTA OK + cómo se cumple el umbral (1 TIER 1, o 2 TIER 2
+    independientes) / Resumen (3-4 frases) / Por qué es la más importante
+    {alcance}.
     Si no hay ninguna EN VENTANA: "SIN NOTICIA EN VENTANA" + la mejor FUERA DE
     VENTANA (si existe), etiquetada como contexto.
   agent: scout_cripto
@@ -74,10 +94,11 @@ research_economia:
     si no hay, entrega la mejor FUERA DE VENTANA como contexto. No inventes cifras;
     no denuncies como falsa una nota que solo no pudiste corroborar.
   expected_output: >
-    Una nota con: Titular / Fuente (medio + URL) + fecha /
+    Una nota con: Titular / Fuente(s) (medio + URL + TIER 1|2|3|0) + fecha /
     Estado: EN VENTANA | FUERA DE VENTANA | NO VERIFICABLE /
-    Verificación: ABIERTA OK / Resumen (3-4 frases) / Por qué es la más
-    importante {alcance}.
+    Verificación: ABIERTA OK + cómo se cumple el umbral (1 TIER 1, o 2 TIER 2
+    independientes) / Resumen (3-4 frases) / Por qué es la más importante
+    {alcance}.
     Si no hay ninguna EN VENTANA: "SIN NOTICIA EN VENTANA" + la mejor FUERA DE
     VENTANA (si existe), etiquetada como contexto.
   agent: scout_economia
@@ -91,6 +112,8 @@ curaduria_editorial:
       declara el tópico "sin novedad en ventana" señalando ese contexto.
     - NO VERIFICABLE: descártala. Solo si hay evidencia positiva de invención la
       calificas de fabricación; si simplemente no se pudo corroborar, dilo así.
+    Haz de compuerta de AUTORIDAD: si una nota marcada EN VENTANA no cumple el
+    umbral (1 fuente TIER 1, o 2 TIER 2 independientes), bájala a NO VERIFICABLE.
     ORDENA las EN VENTANA por relevancia global {alcance}. Justifica cada
     decisión en una frase.
   expected_output: >
