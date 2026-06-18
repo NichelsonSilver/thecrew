@@ -30,7 +30,10 @@ from dotenv import load_dotenv
 API_POSTS = "https://api.linkedin.com/rest/posts"
 API_USERINFO = "https://api.linkedin.com/v2/userinfo"
 API_ORG_ACLS = "https://api.linkedin.com/rest/organizationAcls"
+API_IMAGES_INIT = "https://api.linkedin.com/rest/images?action=initializeUpload"
 MAX_COMMENTARY = 3000  # límite de LinkedIn para el cuerpo del post
+IMAGEN_DEFECTO = ("output/imagen.png", "output/imagen.jpg", "output/imagen.jpeg")
+_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
 
 
 def _versiones_api() -> list[str]:
@@ -74,8 +77,56 @@ def extraer_seccion_linkedin(md_path: Path) -> str:
             break
         if s.startswith("→") and "comentario" in s.lower():
             continue  # nota de logística, no va en el post
+        low = s.lower().lstrip("*🖼 ").strip()
+        if low.startswith(("imagen sugerida", "imagen:", "alt:", "concepto visual")):
+            continue  # brief de imagen, no va en el texto del post
         cuerpo.append(l)
     return "\n".join(cuerpo).strip()
+
+
+def _alt_por_defecto(texto: str) -> str:
+    """Texto alternativo accesible: primera línea del post, sin markdown."""
+    primera = next((l for l in texto.splitlines() if l.strip()), "Imagen del post")
+    return primera.replace("*", "").strip()[:280]
+
+
+def _subir_imagen(client: httpx.Client, token: str, author: str, ruta: Path) -> tuple[str, str]:
+    """Sube `ruta` a LinkedIn. Devuelve (urn de la imagen, versión que funcionó)."""
+    init_body = {"initializeUploadRequest": {"owner": author}}
+    r = None
+    version_ok = ""
+    for version in _versiones_api():
+        r = client.post(
+            API_IMAGES_INIT,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "X-Restli-Protocol-Version": "2.0.0",
+                "LinkedIn-Version": version,
+            },
+            json=init_body,
+        )
+        if r.status_code != 426:
+            version_ok = version
+            break
+    if r.status_code not in (200, 201):
+        raise RuntimeError(
+            f"No pude inicializar la subida de imagen (HTTP {r.status_code}): {r.text[:300]}"
+        )
+    value = r.json()["value"]
+    upload_url, image_urn = value["uploadUrl"], value["image"]
+
+    mime = _MIME.get(ruta.suffix.lower(), "application/octet-stream")
+    up = client.put(
+        upload_url,
+        content=ruta.read_bytes(),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": mime},
+    )
+    if up.status_code not in (200, 201):
+        raise RuntimeError(
+            f"Falló la subida del binario de la imagen (HTTP {up.status_code}): {up.text[:300]}"
+        )
+    return image_urn, version_ok
 
 
 def _author_urn(client: httpx.Client, token: str) -> str:
@@ -141,11 +192,20 @@ def _org_urn(client: httpx.Client, token: str) -> str:
     return orgs[0]
 
 
-def publicar_en_linkedin(texto: str, *, dry_run: bool = True, como_empresa: bool = False) -> str:
+def publicar_en_linkedin(
+    texto: str,
+    *,
+    dry_run: bool = True,
+    como_empresa: bool = False,
+    imagen: Path | None = None,
+    alt: str = "",
+) -> str:
     """Publica `texto` en LinkedIn. En dry_run no llama a la API.
 
     como_empresa=True publica como página de organización (author = urn:li:
     organization:…); requiere el scope w_organization_social en el token.
+    imagen: ruta a una imagen para adjuntar al post (mejor enganche). alt: texto
+    alternativo accesible (si vacío, se deriva de la primera línea del post).
     """
     if not texto:
         raise ValueError("El texto del post está vacío.")
@@ -154,12 +214,15 @@ def publicar_en_linkedin(texto: str, *, dry_run: bool = True, como_empresa: bool
             f"El post tiene {len(texto)} caracteres; el máximo de LinkedIn es "
             f"{MAX_COMMENTARY}. Acórtalo antes de publicar."
         )
+    if imagen and not imagen.exists():
+        raise RuntimeError(f"No existe la imagen: {imagen}")
 
     if dry_run:
         destino = "página de empresa" if como_empresa else "tu perfil"
         flag = " --empresa" if como_empresa else ""
+        img = f" + imagen {imagen.name}" if imagen else " (sin imagen)"
         return (
-            f"[DRY-RUN] No se publicó. {len(texto)} caracteres listos para {destino}.\n"
+            f"[DRY-RUN] No se publicó. {len(texto)} caracteres{img} listos para {destino}.\n"
             f"Para publicar de verdad: uv run publicar_linkedin --publicar{flag}"
         )
 
@@ -180,10 +243,20 @@ def publicar_en_linkedin(texto: str, *, dry_run: bool = True, como_empresa: bool
         "isReshareDisabledByAuthor": False,
     }
 
-    with httpx.Client(timeout=30) as client:
+    with httpx.Client(timeout=60) as client:
         payload["author"] = _org_urn(client, token) if como_empresa else _author_urn(client, token)
+
+        # Si hay imagen: súbela y adjúntala. Reusa la versión que funcionó en la
+        # subida para el POST (evita re-descubrirla).
+        if imagen:
+            image_urn, version_ok = _subir_imagen(client, token, payload["author"], imagen)
+            payload["content"] = {"media": {"id": image_urn, "altText": alt or _alt_por_defecto(texto)}}
+            versiones = [version_ok]
+        else:
+            versiones = _versiones_api()
+
         ultima = None
-        for version in _versiones_api():
+        for version in versiones:
             r = client.post(
                 API_POSTS,
                 headers={
@@ -196,7 +269,8 @@ def publicar_en_linkedin(texto: str, *, dry_run: bool = True, como_empresa: bool
             )
             if r.status_code in (200, 201):
                 post_id = r.headers.get("x-restli-id") or r.headers.get("x-linkedin-id") or "?"
-                return f"Publicado en LinkedIn (v{version}). ID: {post_id}"
+                con_img = " con imagen" if imagen else ""
+                return f"Publicado en LinkedIn{con_img} (v{version}). ID: {post_id}"
             ultima = r
             if r.status_code != 426:  # 426 = versión inactiva (no crea post); otro error: corta
                 break
@@ -222,6 +296,12 @@ def main() -> None:
     if "--archivo" in args:
         archivo = Path(args[args.index("--archivo") + 1])
 
+    alt = args[args.index("--alt") + 1] if "--alt" in args else ""
+    if "--imagen" in args:
+        imagen: Path | None = Path(args[args.index("--imagen") + 1])
+    else:  # auto-detecta output/imagen.{png,jpg,jpeg}
+        imagen = next((Path(p) for p in IMAGEN_DEFECTO if Path(p).exists()), None)
+
     if not archivo.exists():
         sys.exit(
             f"No existe {archivo}. Corre primero el pipeline "
@@ -233,9 +313,12 @@ def main() -> None:
     print(texto)
     print("─" * 70)
     destino = "PÁGINA DE EMPRESA" if empresa else "PERFIL personal"
-    print(f"({len(texto)} caracteres · destino: {destino})\n")
+    img_info = f"imagen: {imagen}" if imagen else "SIN imagen (pasa --imagen RUTA o deja output/imagen.png)"
+    print(f"({len(texto)} caracteres · destino: {destino} · {img_info})\n")
 
-    resultado = publicar_en_linkedin(texto, dry_run=not publicar, como_empresa=empresa)
+    resultado = publicar_en_linkedin(
+        texto, dry_run=not publicar, como_empresa=empresa, imagen=imagen, alt=alt
+    )
     print(resultado)
 
 

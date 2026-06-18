@@ -177,10 +177,17 @@ adaptacion_redes:
     (1) LinkedIn: post profesional con gancho + 3 ideas clave + CTA.
     (2) X/Twitter: hilo de 4-6 tuits numerados.
     (3) Instagram: texto de carrusel (3-5 slides) + caption con hashtags.
+    (4) Imagen sugerida para el post de LinkedIn: un brief visual concreto para
+    crear una imagen de enganche (concepto, estilo, elementos, paleta sobria y
+    profesional acorde a REALI), MÁS un texto alternativo (alt) accesible de
+    una frase. El brief debe ser accionable en una herramienta de diseño
+    (Canva) o un generador de imágenes. Nada de texto largo dentro de la imagen.
     Mantén la voz de REALI y la objetividad. Nada de clickbait engañoso.
   expected_output: >
-    Documento Markdown con tres secciones (## LinkedIn, ## X/Twitter,
-    ## Instagram), cada una lista para copiar y publicar.
+    Documento Markdown con cuatro secciones (## LinkedIn, ## X/Twitter,
+    ## Instagram, ## Imagen sugerida (post LinkedIn)). Las tres primeras listas
+    para copiar y publicar. La cuarta con dos campos: "Concepto visual:" (brief)
+    y "Alt:" (texto alternativo de una frase).
   agent: community_manager
   context:
     - redaccion_web

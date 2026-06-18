@@ -137,6 +137,18 @@ uv run publicar_linkedin --publicar   # publica en tu perfil
 Por diseño hace **preview por defecto** (publicar es irreversible) y **no está
 cableado al cron**: revisas y publicas a mano.
 
+**Con imagen (mejor enganche):** el pipeline sugiere un concepto visual y un
+alt text en la sección `## Imagen sugerida` de `redes_sociales.md`. Creas la
+imagen (p. ej. en Canva), la guardas y la adjuntas:
+
+```bash
+# auto-detecta output/imagen.png|jpg|jpeg, o pásala explícita:
+uv run publicar_linkedin --publicar --imagen ruta/al/arte.png --alt "descripción"
+```
+
+El paso recomendado antes de publicar: leer `## Imagen sugerida`, crear el
+arte, dejarlo en `output/imagen.png`, y recién entonces `--publicar`.
+
 ### Publicar como página de empresa
 
 ```bash
