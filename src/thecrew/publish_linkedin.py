@@ -29,6 +29,7 @@ from dotenv import load_dotenv
 
 API_POSTS = "https://api.linkedin.com/rest/posts"
 API_USERINFO = "https://api.linkedin.com/v2/userinfo"
+API_ORG_ACLS = "https://api.linkedin.com/rest/organizationAcls"
 MAX_COMMENTARY = 3000  # límite de LinkedIn para el cuerpo del post
 
 
@@ -96,8 +97,56 @@ def _author_urn(client: httpx.Client, token: str) -> str:
     return f"urn:li:person:{sub}"
 
 
-def publicar_en_linkedin(texto: str, *, dry_run: bool = True) -> str:
-    """Publica `texto` en LinkedIn. En dry_run no llama a la API."""
+def _org_urn(client: httpx.Client, token: str) -> str:
+    """URN de la organización: de LINKEDIN_ORG_URN o resuelto vía organizationAcls.
+
+    El auto-resolver lista las páginas que administras (rol ADMINISTRATOR). Si
+    administras varias, hay que fijar LINKEDIN_ORG_URN para desambiguar.
+    Requiere el scope rw_organization_admin en el token.
+    """
+    urn = os.getenv("LINKEDIN_ORG_URN", "").strip()
+    if urn:
+        return urn
+    r = None
+    for version in _versiones_api():
+        r = client.get(
+            API_ORG_ACLS,
+            params={"q": "roleAssignee", "role": "ADMINISTRATOR", "state": "APPROVED"},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "X-Restli-Protocol-Version": "2.0.0",
+                "LinkedIn-Version": version,
+            },
+        )
+        if r.status_code != 426:
+            break
+    if r.status_code != 200:
+        raise RuntimeError(
+            "No pude listar las páginas que administras "
+            f"(HTTP {r.status_code}). Define LINKEDIN_ORG_URN en .env, o asegura "
+            "el scope rw_organization_admin (producto Community Management API). "
+            f"Detalle: {r.text[:300]}"
+        )
+    orgs = [e.get("organization") for e in r.json().get("elements", []) if e.get("organization")]
+    if not orgs:
+        raise RuntimeError(
+            "No administras ninguna página aprobada (o falta el scope). "
+            "Define LINKEDIN_ORG_URN en .env (formato urn:li:organization:XXXX)."
+        )
+    if len(orgs) > 1:
+        raise RuntimeError(
+            "Administras varias páginas: " + ", ".join(orgs) + ". "
+            "Fija LINKEDIN_ORG_URN con la que quieras usar."
+        )
+    return orgs[0]
+
+
+def publicar_en_linkedin(texto: str, *, dry_run: bool = True, como_empresa: bool = False) -> str:
+    """Publica `texto` en LinkedIn. En dry_run no llama a la API.
+
+    como_empresa=True publica como página de organización (author = urn:li:
+    organization:…); requiere el scope w_organization_social en el token.
+    """
     if not texto:
         raise ValueError("El texto del post está vacío.")
     if len(texto) > MAX_COMMENTARY:
@@ -107,9 +156,11 @@ def publicar_en_linkedin(texto: str, *, dry_run: bool = True) -> str:
         )
 
     if dry_run:
+        destino = "página de empresa" if como_empresa else "tu perfil"
+        flag = " --empresa" if como_empresa else ""
         return (
-            f"[DRY-RUN] No se publicó. {len(texto)} caracteres listos.\n"
-            "Para publicar de verdad: uv run publicar_linkedin --publicar"
+            f"[DRY-RUN] No se publicó. {len(texto)} caracteres listos para {destino}.\n"
+            f"Para publicar de verdad: uv run publicar_linkedin --publicar{flag}"
         )
 
     token = os.getenv("LINKEDIN_ACCESS_TOKEN", "").strip()
@@ -130,7 +181,7 @@ def publicar_en_linkedin(texto: str, *, dry_run: bool = True) -> str:
     }
 
     with httpx.Client(timeout=30) as client:
-        payload["author"] = _author_urn(client, token)
+        payload["author"] = _org_urn(client, token) if como_empresa else _author_urn(client, token)
         ultima = None
         for version in _versiones_api():
             r = client.post(
@@ -166,6 +217,7 @@ def main() -> None:
     load_dotenv()  # uv run no inyecta .env; este script no pasa por CrewAI
     args = sys.argv[1:]
     publicar = "--publicar" in args
+    empresa = "--empresa" in args
     archivo = Path("output/redes_sociales.md")
     if "--archivo" in args:
         archivo = Path(args[args.index("--archivo") + 1])
@@ -180,9 +232,10 @@ def main() -> None:
     print("─" * 70)
     print(texto)
     print("─" * 70)
-    print(f"({len(texto)} caracteres)\n")
+    destino = "PÁGINA DE EMPRESA" if empresa else "PERFIL personal"
+    print(f"({len(texto)} caracteres · destino: {destino})\n")
 
-    resultado = publicar_en_linkedin(texto, dry_run=not publicar)
+    resultado = publicar_en_linkedin(texto, dry_run=not publicar, como_empresa=empresa)
     print(resultado)
 
 

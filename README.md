@@ -130,12 +130,27 @@ explícito y revisado (ver abajo).
 `output/redes_sociales.md` y lo publica en tu perfil vía la Posts API.
 
 ```bash
-uv run publicar_linkedin              # PREVIEW (no publica) — default seguro
-uv run publicar_linkedin --publicar   # publica de verdad
+uv run publicar_linkedin              # PREVIEW en tu perfil (no publica)
+uv run publicar_linkedin --publicar   # publica en tu perfil
 ```
 
 Por diseño hace **preview por defecto** (publicar es irreversible) y **no está
 cableado al cron**: revisas y publicas a mano.
+
+### Publicar como página de empresa
+
+```bash
+uv run publicar_linkedin --empresa              # preview como empresa
+uv run publicar_linkedin --publicar --empresa   # publica en la página
+```
+
+Requisitos adicionales (lado LinkedIn):
+1. Ser **admin** de la página de empresa.
+2. Habilitar el producto **Community Management API** en la app (da los scopes
+   `w_organization_social` y `rw_organization_admin`; requiere aprobación).
+3. Re-generar el token con esos scopes: `uv run linkedin_token --empresa`.
+4. El URN de la organización se resuelve solo (páginas que administras); si
+   administras varias, fija `LINKEDIN_ORG_URN` en `.env`.
 
 **Obtener el token (una vez):**
 1. Crea una app en [LinkedIn Developers](https://www.linkedin.com/developers/apps)

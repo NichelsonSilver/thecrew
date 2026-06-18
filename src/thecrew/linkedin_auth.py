@@ -34,7 +34,10 @@ PORT = 8765
 REDIRECT_URI = f"http://localhost:{PORT}/callback"
 AUTH_URL = "https://www.linkedin.com/oauth/v2/authorization"
 TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
-SCOPES = "openid profile w_member_social"
+# Por defecto, publicar como miembro. Con --empresa se añaden los scopes de
+# organización (requieren el producto Community Management API aprobado).
+SCOPES_MIEMBRO = "openid profile w_member_social"
+SCOPES_EMPRESA = SCOPES_MIEMBRO + " w_organization_social rw_organization_admin"
 ENV_PATH = Path(".env")
 
 _resultado: dict[str, str] = {}
@@ -94,12 +97,18 @@ def main() -> None:
             "Cópialos del portal de LinkedIn Developers (pestaña Auth)."
         )
 
+    empresa = "--empresa" in sys.argv[1:]
+    scopes = SCOPES_EMPRESA if empresa else SCOPES_MIEMBRO
+    if empresa:
+        print("Modo EMPRESA: pediré scopes de organización "
+              "(requieren Community Management API aprobado en tu app).\n")
+
     state = secrets.token_urlsafe(16)
     auth_url = AUTH_URL + "?" + urllib.parse.urlencode({
         "response_type": "code",
         "client_id": client_id,
         "redirect_uri": REDIRECT_URI,
-        "scope": SCOPES,
+        "scope": scopes,
         "state": state,
     })
 
