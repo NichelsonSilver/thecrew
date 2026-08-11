@@ -1,212 +1,194 @@
-# THECREW — Redacción autónoma de inteligencia diaria (CrewAI)
+# thecrew — Autonomous AI News Intelligence Pipeline
 
-Equipo de agentes que **recopila la noticia más importante del día** en tres
-tópicos (Inteligencia Artificial, Cripto, Economía mundial), la **analiza**, y
-emite una **opinión objetiva desde la perspectiva de una empresa AI-first
-(REALI)**, hasta dejar **entregables listos para publicación**: un artículo para
-web y adaptaciones para redes sociales.
+A multi-agent newsroom built on [CrewAI](https://docs.crewai.com). Eight specialized agents find the day's most important story across three topics (AI, crypto, world economy), verify and analyze it, form an opinion through an AI-first lens, and produce publication-ready deliverables for web and social — with a human approval gate before anything goes out.
 
-Construido sobre [CrewAI](https://docs.crewai.com), orquestando modelos
-**Claude (Anthropic)** vía el proveedor `anthropic/` de LiteLLM.
+Runs on a weekly cron via GitHub Actions and publishes to LinkedIn through the official Posts API.
+
+Stack: Python · CrewAI · LiteLLM · Anthropic Claude / OpenAI / Gemini · Serper · GitHub Actions · LinkedIn Posts API (OAuth 2.0)
 
 ---
 
-## Arquitectura — pipeline de 8 agentes
+## Architecture — 8-agent pipeline
 
+```mermaid
+flowchart TB
+    subgraph research["Research"]
+        S1["scout_ia"]
+        S2["scout_cripto"]
+        S3["scout_economia"]
+    end
+    CUR["editor_jefe<br/>Curation & editorial prioritization"]
+    ANA["analista<br/>Technical & market implications"]
+    OPI["estratega_reali<br/>AI-first opinion (knowledge base)"]
+    subgraph output["Publication"]
+        WEB["redactor_web<br/>Web article"]
+        CM["community_manager<br/>Social adaptations"]
+    end
+    GATE{"Human approval gate"}
+    LI["LinkedIn Posts API"]
+
+    S1 & S2 & S3 --> CUR --> ANA --> OPI --> WEB & CM --> GATE --> LI
 ```
-                 ┌─────────────────────────────────────────────┐
-   RESEARCH      │  scout_ia    scout_cripto    scout_economia  │  (web search)
-                 └───────────────────────┬─────────────────────┘
-                                         ▼
-   CURACIÓN      │  editor_jefe  → selecciona la #1 por tópico + prioriza │
-                                         ▼
-   ANÁLISIS      │  analista     → implicancias técnicas / de mercado     │
-                                         ▼
-   OPINIÓN       │  estratega_reali → lente AI-first (knowledge/)         │
-                                         ▼
-   PUBLICACIÓN   │  redactor_web → artículo Markdown (output/)            │
-                 │  community_manager → LinkedIn / X / Instagram          │
-                 └────────────────────────────────────────────┘
-```
 
-| # | Agente | Rol | Herramientas |
-|---|--------|-----|--------------|
-| 1-3 | `scout_*` | Cazadores de noticias por tópico | `SerperDevTool`, `ScrapeWebsiteTool` |
-| 4 | `editor_jefe` | Curaduría y priorización editorial | — (razonamiento) |
-| 5 | `analista` | Análisis de implicancias | `ScrapeWebsiteTool` (profundizar fuentes) |
-| 6 | `estratega_reali` | Opinión objetiva AI-first | `knowledge/` (lente REALI) |
-| 7 | `redactor_web` | Artículo para web | — (escritura) |
-| 8 | `community_manager` | Posts para RRSS | — (escritura) |
+| # | Agent | Role | Tools |
+|---|-------|------|-------|
+| 1–3 | `scout_*` | Topic-specific news hunting | `SerperDevTool`, `ScrapeWebsiteTool` |
+| 4 | `editor_jefe` | Selects the #1 story per topic and prioritizes | reasoning only |
+| 5 | `analista` | Analyzes implications | `ScrapeWebsiteTool` (source deep-dive) |
+| 6 | `estratega_reali` | Objective AI-first opinion | `knowledge/` base |
+| 7 | `redactor_web` | Web article | writing |
+| 8 | `community_manager` | Social posts + visual brief | writing |
 
-**Por qué este diseño:** separar *research → curaduría → análisis → opinión →
-publicación* en agentes especializados produce mejor calidad que un único
-prompt monolítico, permite intercambiar el modelo por etapa (los scouts pueden
-ir en un modelo más barato, la opinión en el más capaz) y deja puntos de
-intervención humana claros antes de publicar.
+### Why this design
+
+Splitting *research → curation → analysis → opinion → publication* into specialized agents outperforms a single monolithic prompt on output quality, but the real payoff is operational:
+
+- **Per-stage model routing.** Scouts do high-volume search and summarization where a cheap, fast model is sufficient; analysis and opinion get the most capable model. Cost scales with the work that actually needs reasoning.
+- **Clear intervention points.** Because each stage emits a discrete artifact, a human can inspect the pipeline at any boundary rather than debugging one opaque generation.
+- **Irreversible actions are gated.** Publishing is the only step with real-world consequences, so it is deliberately excluded from automation.
 
 ---
 
-## Modelos — multi-proveedor (multimodal)
+## Multi-provider model routing
 
-CrewAI llama a cualquier LLM a través de **LiteLLM**, así que el string del
-modelo lleva el prefijo de proveedor. Todos los modelos soportados son
-multimodales. Puedes elegir proveedor **por variable de entorno, sin tocar
-código**:
+CrewAI reaches any LLM through **LiteLLM**, so model strings carry a provider prefix. Providers are swappable **by environment variable, without touching code**:
 
-| Proveedor | String de modelo (ejemplo) | Clave en `.env` |
-|-----------|----------------------------|-----------------|
+| Provider | Model string (example) | `.env` key |
+|----------|------------------------|------------|
 | Anthropic (default) | `anthropic/claude-opus-4-8`, `anthropic/claude-haiku-4-5` | `ANTHROPIC_API_KEY` |
-| OpenAI    | `openai/gpt-4o`, `openai/gpt-4o-mini` | `OPENAI_API_KEY` |
-| Google    | `gemini/gemini-2.0-flash`, `gemini/gemini-1.5-pro` | `GEMINI_API_KEY` |
+| OpenAI | `openai/gpt-4o`, `openai/gpt-4o-mini` | `OPENAI_API_KEY` |
+| Google | `gemini/gemini-2.0-flash`, `gemini/gemini-1.5-pro` | `GEMINI_API_KEY` |
 
-El pipeline tiene **dos etapas con modelo configurable por separado** (en
-`src/thecrew/crew.py`):
+Two independently configurable stages (`src/thecrew/crew.py`):
 
-- `RESEARCH_MODEL` — los scouts (búsqueda + resumen). Candidato a un modelo más
-  barato/rápido (p. ej. `gemini/gemini-2.0-flash` u `openai/gpt-4o-mini`).
-- `WRITER_MODEL` — análisis, opinión AI-first y redacción. Conviene el modelo
-  más capaz.
+- **`RESEARCH_MODEL`** — the scouts (search + summarize). Good candidate for a cheaper, faster model.
+- **`WRITER_MODEL`** — analysis, AI-first opinion and drafting. Use the most capable model available.
 
-Si no defines esas variables, **ambas etapas usan `anthropic/claude-opus-4-8`**.
-Verifica los IDs exactos de OpenAI/Gemini en la doc de LiteLLM antes de fijarlos.
+Unset, both stages fall back to `anthropic/claude-opus-4-8`. Verify exact OpenAI/Gemini model IDs against the LiteLLM docs before pinning them.
 
 ---
 
-## Herramientas, MCP y extensibilidad
+## Tools and extensibility
 
-- **Web search / scraping:** `SerperDevTool` (requiere `SERPER_API_KEY`) y
-  `ScrapeWebsiteTool`. Para investigación en tiempo real del día.
-- **Publicación (stubs en `tools/publishing_tools.py`):** herramientas custom
-  para guardar el artículo y los posts como archivos, listas para conectar a
-  un CMS, a la API de LinkedIn/X, o a un MCP.
-- **MCP (opcional):** `crew.py` incluye, comentado, el patrón
-  `MCPServerAdapter` de `crewai-tools` para exponer servidores MCP (p. ej.
-  Notion para publicar la nota, o un MCP de redes sociales) como tools nativas
-  de los agentes.
+- **Search / scraping:** `SerperDevTool` (needs `SERPER_API_KEY`) and `ScrapeWebsiteTool` for same-day research.
+- **Publishing:** custom tools in `tools/publishing_tools.py` persist the article and posts as files, ready to wire into a CMS or an external API.
+- **MCP (scaffolded, not active):** `crew.py` ships the `MCPServerAdapter` pattern from `crewai-tools` as a commented block, so MCP servers — a Notion server for publishing, a social-media server — can be exposed as native agent tools. **This path is prepared, not currently wired in.**
 
 ---
 
 ## Setup
 
 ```bash
-# 1. Instalar (requiere Python 3.10–3.13 y uv recomendado por CrewAI)
+# 1. Install (Python 3.10–3.13; uv recommended by CrewAI)
 pip install uv
-uv sync           # o: pip install -e .
+uv sync                 # or: pip install -e .
 
-# 2. Credenciales
-cp .env.example .env
-#   edita .env y completa ANTHROPIC_API_KEY y SERPER_API_KEY
+# 2. Credentials
+cp .env.example .env    # fill in ANTHROPIC_API_KEY and SERPER_API_KEY
 
-# 3. Ejecutar el crew — trigger EXPLÍCITO, sin default silencioso
-uv run run_dia      # noticia más importante de las últimas 24 horas (on-demand)
-uv run run_semana   # noticia más importante de los últimos 7 días (corrida semanal)
+# 3. Run — explicit trigger, no silent default
+uv run run_dia          # top story of the last 24 hours (on-demand)
+uv run run_semana       # top story of the last 7 days (weekly run)
 ```
 
-Los entregables quedan en `output/`:
-- `output/articulo_web.md` — artículo para la página web.
-- `output/redes_sociales.md` — posts para LinkedIn, X e Instagram.
+Deliverables land in `output/`:
+- `output/articulo_web.md` — web article
+- `output/redes_sociales.md` — LinkedIn, X and Instagram posts
 
 ---
 
-## Automatización (GitHub Actions)
+## Automation (GitHub Actions)
 
-`.github/workflows/semanal.yml` corre `run_semana` cada **lunes 13:00 UTC**
-(≈ 09:00 Chile) y por disparo manual (`workflow_dispatch`). Sube `output/` como
-artifact. Requiere cargar dos secrets en el repo:
+`.github/workflows/semanal.yml` runs `run_semana` every **Monday at 13:00 UTC** (≈ 09:00 Chile) plus manual `workflow_dispatch`, and uploads `output/` as an artifact.
 
 ```bash
 gh secret set ANTHROPIC_API_KEY --repo <owner>/thecrew
 gh secret set SERPER_API_KEY    --repo <owner>/thecrew
 ```
 
-El cron **genera** el entregable; **no publica solo**. La publicación es un paso
-explícito y revisado (ver abajo).
+The cron **generates**; it does not publish. Publication is a separate, reviewed step by design.
 
 ---
 
-## Publicación en LinkedIn
+## LinkedIn publishing
 
-`uv run publicar_linkedin` toma el bloque `## LinkedIn` de
-`output/redes_sociales.md` y lo publica en tu perfil vía la Posts API.
-
-```bash
-uv run publicar_linkedin              # PREVIEW en tu perfil (no publica)
-uv run publicar_linkedin --publicar   # publica en tu perfil
-```
-
-Por diseño hace **preview por defecto** (publicar es irreversible) y **no está
-cableado al cron**: revisas y publicas a mano.
-
-**Imagen (mejor enganche):** deja una imagen en `imagenes/` nombrada con la
-fecha de hoy — `imagenes/AAAA-MM-DD.png` (o `.jpg`). El script la detecta y la
-adjunta con texto alternativo accesible (deriva de la 1ª línea del post;
-override con `--alt "..."`). Override de imagen: `--imagen ruta/foto.png`. El
-pipeline además sugiere **qué imagen crear**: la tarea `adaptacion_redes` emite
-una sección `## Imagen sugerida (post LinkedIn)` con un brief visual + alt en
-`output/redes_sociales.md`. El preview indica si encontró imagen; si no,
-publica solo texto. Flujo recomendado antes de publicar:
+`uv run publicar_linkedin` extracts the `## LinkedIn` block from `output/redes_sociales.md` and posts it via the Posts API.
 
 ```bash
-uv run run_dia                        # 1) genera el post
-# 2) deja imagenes/AAAA-MM-DD.png
-uv run publicar_linkedin              # 3) preview: confirma texto + imagen
-uv run publicar_linkedin --publicar   # 4) publica con la imagen adjunta
+uv run publicar_linkedin              # PREVIEW only (default)
+uv run publicar_linkedin --publicar   # actually publish
 ```
 
-### Publicar como página de empresa
+**Preview-by-default is intentional**: publishing is irreversible, so the destructive path requires an explicit flag and is never reachable from the cron.
+
+**Images.** Drop a file at `imagenes/YYYY-MM-DD.png` (or `.jpg`) and the script attaches it with accessible alt text derived from the post's first line (`--alt "..."` to override, `--imagen path.png` for a different file). The pipeline also *suggests what image to create*: the `adaptacion_redes` task emits a `## Imagen sugerida` section with a visual brief and alt text. Preview reports whether an image was found; without one it posts text only.
 
 ```bash
-uv run publicar_linkedin --empresa              # preview como empresa
-uv run publicar_linkedin --publicar --empresa   # publica en la página
+uv run run_dia                        # 1) generate
+# 2) drop imagenes/YYYY-MM-DD.png
+uv run publicar_linkedin              # 3) preview: confirm text + image
+uv run publicar_linkedin --publicar   # 4) publish
 ```
 
-Requisitos adicionales (lado LinkedIn):
-1. Ser **admin** de la página de empresa.
-2. Habilitar el producto **Community Management API** en la app (da los scopes
-   `w_organization_social` y `rw_organization_admin`; requiere aprobación).
-3. Re-generar el token con esos scopes: `uv run linkedin_token --empresa`.
-4. El URN de la organización se resuelve solo (páginas que administras); si
-   administras varias, fija `LINKEDIN_ORG_URN` en `.env`.
+### Publishing as a company page
 
-**Obtener el token (una vez):**
-1. Crea una app en [LinkedIn Developers](https://www.linkedin.com/developers/apps)
-   y asóciala a una página de empresa.
-2. Agrega los productos **"Share on LinkedIn"** y **"Sign In with LinkedIn using
-   OpenID Connect"** para habilitar los scopes `w_member_social` y `openid`/`profile`.
-3. En **Auth → Authorized redirect URLs** agrega exactamente:
-   `http://localhost:8765/callback`.
-4. En `.env`: `LINKEDIN_CLIENT_ID` y `LINKEDIN_CLIENT_SECRET` (pestaña Auth).
-5. Corre el helper — abre el navegador, autorizas, y escribe el token en `.env`:
+```bash
+uv run publicar_linkedin --empresa              # preview as company
+uv run publicar_linkedin --publicar --empresa   # publish to the page
+```
+
+Requires being a page **admin**, enabling the **Community Management API** product (grants `w_organization_social` and `rw_organization_admin`, subject to approval), and regenerating the token with `uv run linkedin_token --empresa`. The organization URN resolves automatically; pin `LINKEDIN_ORG_URN` in `.env` if you administer several pages.
+
+<details>
+<summary><b>Getting the OAuth token (one-time setup)</b></summary>
+
+1. Create an app at [LinkedIn Developers](https://www.linkedin.com/developers/apps) and associate it with a company page.
+2. Add the **"Share on LinkedIn"** and **"Sign In with LinkedIn using OpenID Connect"** products to enable the `w_member_social` and `openid`/`profile` scopes.
+3. Under **Auth → Authorized redirect URLs**, add exactly: `http://localhost:8765/callback`.
+4. Put `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET` in `.env`.
+5. Run the helper — it opens a browser, you authorize, and it writes the token to `.env`:
    ```bash
    uv run linkedin_token
    ```
-   Tener Client ID/Secret NO basta: el token de publicación exige tu
-   autorización como miembro (OAuth 3-legged). Eso es lo que hace este paso.
-   Los tokens de miembro caducan (~60 días); el refresh token se guarda si la
-   app lo habilita. `LINKEDIN_AUTHOR_URN` es opcional (se resuelve vía
-   `/v2/userinfo`).
+
+Client ID and secret alone are **not** enough: a publishing token requires member authorization via 3-legged OAuth, which is exactly what this step performs. Member tokens expire (~60 days); the refresh token is stored if the app enables it. `LINKEDIN_AUTHOR_URN` is optional — it resolves through `/v2/userinfo`.
+
+</details>
 
 ---
 
-## Personalización rápida
+## Customization
 
-- **Tópicos:** edita `topics` en `src/thecrew/main.py`.
-- **Voz / criterio AI-first:** edita `knowledge/reali_ai_first_lens.md`.
-- **Reglas editoriales (objetividad, formato):** `knowledge/editorial_guidelines.md`.
-- **Agentes (rol/goal/backstory):** `src/thecrew/config/agents.yaml`.
-- **Tareas (instrucciones y salidas):** `src/thecrew/config/tasks.yaml`.
+| What | Where |
+|---|---|
+| Topics | `src/thecrew/main.py` → `topics` |
+| AI-first voice and criteria | `knowledge/reali_ai_first_lens.md` |
+| Editorial rules (objectivity, format) | `knowledge/editorial_guidelines.md` |
+| Agent roles / goals / backstories | `src/thecrew/config/agents.yaml` |
+| Task instructions and outputs | `src/thecrew/config/tasks.yaml` |
 
 ---
 
-## Estado
+## Status
 
-Scaffold funcional. Definición de "done" del scaffold:
-- [x] Estructura CrewAI estándar (config YAML + crew.py + main.py).
-- [x] 8 agentes y 8 tareas encadenadas.
-- [x] Integración Claude vía LiteLLM, dos LLMs configurables.
-- [x] Tools de búsqueda + stubs de publicación + patrón MCP.
-- [x] Knowledge base con la lente AI-first de REALI.
-- [x] Credenciales reales conectadas y corridas de validación (dia + semana).
-- [x] Automatización semanal vía GitHub Actions (cron + artifact).
-- [x] Publicación en LinkedIn (`publicar_linkedin`, preview-by-default).
-- [ ] Otros canales (web / X / Instagram) cuando se decida.
+Running end to end with live credentials.
+
+- [x] Standard CrewAI structure (YAML config + `crew.py` + `main.py`)
+- [x] 8 agents and 8 chained tasks
+- [x] Multi-provider LLM routing via LiteLLM, two independently configurable stages
+- [x] Search tools + publishing tools + MCP adapter pattern scaffolded
+- [x] Live credentials connected, validation runs completed (daily + weekly)
+- [x] Weekly automation via GitHub Actions (cron + artifact)
+- [x] LinkedIn publishing (`publicar_linkedin`, preview-by-default, OAuth 2.0)
+- [ ] Additional channels (web CMS / X / Instagram)
+- [ ] MCP adapter activated beyond the scaffolded pattern
+
+## Known limitations
+
+- **No automated output evaluation.** Editorial quality is currently judged by human review at the approval gate. A regression suite scoring factuality against retrieved sources is the clearest next improvement.
+- **Single-pass pipeline.** Agents do not currently re-plan or retry on weak upstream output; a bad scout result propagates downstream.
+- **Source diversity depends on Serper ranking.** No independent verification layer beyond the analyst's source deep-dive.
+
+---
+
+Built by [Nichelson Churata](https://www.linkedin.com/in/nichelsonsilver)
